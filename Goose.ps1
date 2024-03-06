@@ -1,53 +1,50 @@
-# Check if mapped drive I: exists
-if (-not (Get-PSDrive -Name "H" -ErrorAction SilentlyContinue)) {
-    # Map drive H: to \\filesrv01\Install
-    New-PSDrive -Name "H" -PSProvider FileSystem -Root "\\filesrv01\Install" -Persist
-}
+# Set variables for network drive and its corresponding UNC path
+$NetworkDriveLetter = "H"
+$NetworkDriveUNC = "\\filesrv01\Install"
+$SourceDirectory = "${NetworkDriveLetter}:\Goose"
 
-# Define the source directory
-$sourceDirectory = "H:\Goose"
+try {
+    # Map network drive if not already mapped
+    if (-not (Get-PSDrive -Name $NetworkDriveLetter -ErrorAction SilentlyContinue)) {
+        New-PSDrive -Name $NetworkDriveLetter -PSProvider FileSystem -Root $NetworkDriveUNC -Persist -ErrorAction Stop > $null
+    }
 
-# Function to check if OneDrive is available
-function Check-OneDrive {
-    if ($env:OneDrive -ne $null -and $env:OneDrive -ne "") {
-        return $true
+    # Check if OneDrive is available
+    $OneDriveAvailable = $env:OneDrive -ne $null -and $env:OneDrive -ne ""
+
+    # Determine Goose directory based on OneDrive availability
+    if ($OneDriveAvailable) {
+        $GooseDirectory = "$env:OneDrive\Documents\Goose"
     } else {
-        return $false
-    }
-}
-
-# Check if OneDrive is available
-if (Check-OneDrive) {
-    # Set $gooseDirectory to OneDrive path
-    $gooseDirectory = "$env:OneDrive\Documents\Goose"
-} else {
-    # Set $gooseDirectory to UserProfile path
-    $gooseDirectory = "$env:USERPROFILE\Documents\Goose"
-}
-
-# Check if the directory exists
-if (-not (Test-Path $gooseDirectory)) {
-    # Copy the entire directory from source to destination
-    Copy-Item -Path $sourceDirectory -Destination $gooseDirectory -Recurse -Force
-}
-
-# Define the variable for GooseDesktop.exe
-$gooseexe = "$gooseDirectory\GooseDesktop.exe"
-
-# Continuous loop
-while ($true) {
-    # Check if any processes with name containing "goose" are found
-    $gooseProcesses = Get-Process | Where-Object { $_.ProcessName -like '*goose*' }
-
-    if ($gooseProcesses) {
-        Write-Output "GooseDesktop.exe process found."
-    }
-    else {
-        Write-Output "GooseDesktop.exe process not found. Starting GooseDesktop.exe..."
-        # Start GooseDesktop.exe
-        Start-Process -FilePath $gooseexe
+        $GooseDirectory = "$env:USERPROFILE\Documents\Goose"
     }
 
-    # Wait for 5 seconds before next iteration
-    Start-Sleep -Seconds 5
+    # Copy Goose directory if it doesn't exist
+    if (-not (Test-Path $GooseDirectory)) {
+        Copy-Item -Path $SourceDirectory -Destination $GooseDirectory -Recurse -Force -ErrorAction Stop
+    }
+
+    # Define the variable for GooseDesktop.exe
+    $GooseExe = "$GooseDirectory\GooseDesktop.exe"
+
+    # Continuous loop
+    while ($true) {
+        # Check if any processes with name containing "goose" are found
+        $GooseProcesses = Get-Process | Where-Object { $_.ProcessName -like '*goose*' }
+
+        if ($GooseProcesses) {
+            Write-Output "GooseDesktop.exe process found."
+        }
+        else {
+            Write-Output "GooseDesktop.exe process not found. Starting GooseDesktop.exe..."
+            # Start GooseDesktop.exe
+            Start-Process -FilePath $GooseExe
+        }
+
+        # Wait for 5 seconds before next iteration
+        Start-Sleep -Seconds 5
+    }
+}
+catch {
+    Write-Error "An error occurred: $_"
 }
